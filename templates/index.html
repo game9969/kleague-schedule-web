@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>K리그 월별 일정 조회 v0.1.1</title>
+  <style>
+    body{font-family:Arial,"Malgun Gothic",sans-serif;background:#f6f7fb;margin:0;padding:24px;color:#14171f}
+    .wrap{max-width:1100px;margin:0 auto}
+    .card{background:#fff;border:1px solid #d9deea;border-radius:18px;padding:20px;margin-bottom:18px}
+    .row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end}
+    label{display:block;margin-bottom:8px;font-weight:700}
+    select,button,input{width:100%;padding:12px;border-radius:12px;border:1px solid #d9deea;font:inherit}
+    button{background:#de071a;color:#fff;border:none;font-weight:700;cursor:pointer}
+    .status{margin:14px 0;padding:12px;border-radius:12px;background:#fff8eb;border:1px solid #f0d7a1;color:#b45309}
+    .ok{background:#ecfff2;border-color:#bce7c8;color:#0f9d58}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .toolbar input{flex:1 1 240px}
+    .table-wrap{overflow:auto;border:1px solid #d9deea;border-radius:16px}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{padding:12px;border-bottom:1px solid #edf0f6;text-align:left;font-size:14px}
+    th{background:#f9fafb}
+    .empty{text-align:center;color:#6b7280;padding:30px}
+    @media (max-width: 900px){.row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 style="margin:0 0 8px;">K리그 월별 일정 조회</h1>
+      <div>리그와 연도, 월을 선택하면 일정 정보를 불러옵니다.</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="league">리그</label>
+          <select id="league">
+            <option value="kleague1">K리그1</option>
+            <option value="kleague2">K리그2</option>
+          </select>
+        </div>
+        <div>
+          <label for="year">연도</label>
+          <select id="year"></select>
+        </div>
+        <div>
+          <label for="month">월</label>
+          <select id="month"></select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="loadBtn">일정 불러오기</button>
+        </div>
+      </div>
+
+      <div id="status" class="status">조회 전입니다.</div>
+
+      <div class="toolbar">
+        <input id="searchInput" type="text" placeholder="팀명, 경기장, 상태 검색">
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>날짜</th>
+              <th>시간</th>
+              <th>홈</th>
+              <th>원정</th>
+              <th>경기장</th>
+              <th>상태</th>
+              <th>비고</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td class="empty" colspan="7">데이터 없음</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = { rows: [], filtered: [] };
+    const els = {
+      league: document.getElementById("league"),
+      year: document.getElementById("year"),
+      month: document.getElementById("month"),
+      loadBtn: document.getElementById("loadBtn"),
+      status: document.getElementById("status"),
+      tbody: document.getElementById("tbody"),
+      searchInput: document.getElementById("searchInput")
+    };
+
+    function initSelects() {
+      for (let y = 2023; y <= 2027; y++) {
+        const opt = document.createElement("option");
+        opt.value = String(y);
+        opt.textContent = String(y);
+        if (y === 2026) opt.selected = true;
+        els.year.appendChild(opt);
+      }
+      for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement("option");
+        opt.value = String(m);
+        opt.textContent = String(m).padStart(2, "0");
+        if (m === 3) opt.selected = true;
+        els.month.appendChild(opt);
+      }
+    }
+
+    function setStatus(text, ok=false) {
+      els.status.textContent = text;
+      els.status.className = ok ? "status ok" : "status";
+    }
+
+    function esc(v) {
+      return String(v ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function render(rows) {
+      if (!rows.length) {
+        els.tbody.innerHTML = `<tr><td class="empty" colspan="7">데이터 없음</td></tr>`;
+        return;
+      }
+      els.tbody.innerHTML = rows.map(row => `
+        <tr>
+          <td>${esc(row.date)}</td>
+          <td>${esc(row.time)}</td>
+          <td>${esc(row.home)}</td>
+          <td>${esc(row.away)}</td>
+          <td>${esc(row.stadium)}</td>
+          <td>${esc(row.status)}</td>
+          <td>${esc(row.note)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function applySearch() {
+      const q = els.searchInput.value.trim().toLowerCase();
+      if (!q) {
+        state.filtered = [...state.rows];
+      } else {
+        state.filtered = state.rows.filter(row =>
+          [row.date, row.time, row.home, row.away, row.stadium, row.status, row.note]
+            .join(" ").toLowerCase().includes(q)
+        );
+      }
+      render(state.filtered);
+    }
+
+    async function loadSchedule() {
+      setStatus("일정 조회 중...");
+      els.loadBtn.disabled = true;
+
+      try {
+        const url = `/api/schedule?league=${encodeURIComponent(els.league.value)}&year=${encodeURIComponent(els.year.value)}&month=${encodeURIComponent(els.month.value)}`;
+        const res = await fetch(url);
+        const payload = await res.json();
+
+        if (!payload.ok) {
+          throw new Error(payload.error || "조회 실패");
+        }
+
+        state.rows = payload.rows || [];
+        state.filtered = [...state.rows];
+        render(state.filtered);
+        setStatus(`조회 완료: ${payload.count}건`, true);
+      } catch (e) {
+        setStatus(`오류: ${e.message}`);
+      } finally {
+        els.loadBtn.disabled = false;
+      }
+    }
+
+    els.loadBtn.addEventListener("click", loadSchedule);
+    els.searchInput.addEventListener("input", applySearch);
+    initSelects();
+  </script>
+</body>
+</html>
